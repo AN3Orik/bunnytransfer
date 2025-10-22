@@ -1,0 +1,48 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            runtime: win-x64
+            artifact: bunnytransfer.exe
+          - os: ubuntu-latest
+            runtime: linux-x64
+            artifact: bunnytransfer
+          - os: macos-latest
+            runtime: osx-arm64
+            artifact: bunnytransfer
+          - os: macos-13
+            runtime: osx-x64
+            artifact: bunnytransfer
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+    
+    - name: Restore dependencies
+      run: dotnet restore BunnyTransfer.NET/BunnyTransfer.NET.csproj
+    
+    - name: Build Native AOT
+      run: dotnet publish BunnyTransfer.NET/BunnyTransfer.NET.csproj -c Release -r ${{ matrix.runtime }} --self-contained
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: bunnytransfer-${{ matrix.runtime }}
+        path: BunnyTransfer.NET/bin/Release/net9.0/${{ matrix.runtime }}/publish/${{ matrix.artifact }}
+        if-no-files-found: error

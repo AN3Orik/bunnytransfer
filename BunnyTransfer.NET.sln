@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BunnyTransfer.NET", "BunnyTransfer.NET\BunnyTransfer.NET.csproj", "{F4D16E60-2853-4F23-9145-299200BDCC92}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BunnyCDN.Net.Storage", "BunnyCDN.Net.Storage\BunnyCDN.Net.Storage.csproj", "{A1D441B0-CA33-4780-8B4E-854F8B14DBBC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F4D16E60-2853-4F23-9145-299200BDCC92}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F4D16E60-2853-4F23-9145-299200BDCC92}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F4D16E60-2853-4F23-9145-299200BDCC92}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F4D16E60-2853-4F23-9145-299200BDCC92}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1D441B0-CA33-4780-8B4E-854F8B14DBBC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1D441B0-CA33-4780-8B4E-854F8B14DBBC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1D441B0-CA33-4780-8B4E-854F8B14DBBC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1D441B0-CA33-4780-8B4E-854F8B14DBBC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

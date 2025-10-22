@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Version>1.0.5</Version>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Company>BunnyWay d.o.o.</Company>
+    <Description>The official .NET library used for interacting with the BunnyCDN Storage API.</Description>
+    <Authors>BunnyWay d.o.o.</Authors>
+    <PackageTags>storage</PackageTags>
+    <Copyright>Copyright 2020 BunnyWay d.o.o.</Copyright>
+    <AssemblyName>BunnyCDN.Net.Storage</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NuGet.CommandLine" Version="5.3.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>

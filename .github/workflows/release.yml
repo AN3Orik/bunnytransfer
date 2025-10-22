@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  build-and-upload:
+    needs: create-release
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            runtime: win-x64
+            artifact: bunnytransfer.exe
+            asset_name: bunnytransfer-win-x64.exe
+          - os: ubuntu-latest
+            runtime: linux-x64
+            artifact: bunnytransfer
+            asset_name: bunnytransfer-linux-x64
+          - os: macos-latest
+            runtime: osx-arm64
+            artifact: bunnytransfer
+            asset_name: bunnytransfer-macos-arm64
+          - os: macos-13
+            runtime: osx-x64
+            artifact: bunnytransfer
+            asset_name: bunnytransfer-macos-x64
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+    
+    - name: Restore dependencies
+      run: dotnet restore BunnyTransfer.NET/BunnyTransfer.NET.csproj
+    
+    - name: Build Native AOT
+      run: dotnet publish BunnyTransfer.NET/BunnyTransfer.NET.csproj -c Release -r ${{ matrix.runtime }} --self-contained
+    
+    - name: Prepare artifact (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        chmod +x BunnyTransfer.NET/bin/Release/net9.0/${{ matrix.runtime }}/publish/${{ matrix.artifact }}
+        cp BunnyTransfer.NET/bin/Release/net9.0/${{ matrix.runtime }}/publish/${{ matrix.artifact }} ${{ matrix.asset_name }}
+    
+    - name: Prepare artifact (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        Copy-Item BunnyTransfer.NET/bin/Release/net9.0/${{ matrix.runtime }}/publish/${{ matrix.artifact }} ${{ matrix.asset_name }}
+    
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./${{ matrix.asset_name }}
+        asset_name: ${{ matrix.asset_name }}
+        asset_content_type: application/octet-stream
