@@ -229,15 +229,26 @@ namespace BunnyTransfer.NET
             // Final update
             lock (_consoleLock)
             {
-                if (_lastLineCount > 0)
+                try
                 {
-                    Console.SetCursorPosition(0, Math.Max(0, Console.CursorTop - _lastLineCount));
-                    for (int i = 0; i < _lastLineCount; i++)
+                    if (_lastLineCount > 0)
                     {
-                        Console.Write(new string(' ', Console.BufferWidth - 1));
-                        Console.WriteLine();
+                        Console.SetCursorPosition(0, Math.Max(0, Console.CursorTop - _lastLineCount));
+                        
+                        // Clear all progress lines
+                        for (int i = 0; i < _lastLineCount; i++)
+                        {
+                            Console.Write(new string(' ', Console.BufferWidth - 1));
+                            Console.WriteLine();
+                        }
+                        
+                        Console.SetCursorPosition(0, Math.Max(0, Console.CursorTop - _lastLineCount));
+                        _lastLineCount = 0;
                     }
-                    Console.SetCursorPosition(0, Math.Max(0, Console.CursorTop - _lastLineCount));
+                }
+                catch
+                {
+                    Console.WriteLine();
                 }
             }
         }
