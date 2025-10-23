@@ -1,49 +1,38 @@
+using System.Security.Cryptography;
 using BunnyCDN.Net.Storage;
 using BunnyCDN.Net.Storage.Models;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Threading.Tasks;
 
-namespace BunnyTransfer.NET
+namespace BunnyTransfer.NET.Implementation
 {
     /// <summary>
     /// Main sync engine that handles the synchronization logic
     /// </summary>
-    public class SyncEngine
+    public class SyncEngine(SyncOptions options)
     {
-        private readonly SyncOptions _options;
         private BunnyCDNStorage? _storage;
-
-        public SyncEngine(SyncOptions options)
-        {
-            _options = options;
-        }
 
         public async Task ExecuteAsync()
         {
-            _storage = new BunnyCDNStorage(_options.StorageZone, _options.AccessKey, _options.Region);
+            _storage = new BunnyCDNStorage(options.StorageZone, options.AccessKey, options.Region);
 
             if (_storage == null)
             {
                 throw new InvalidOperationException("Failed to initialize storage client.");
             }
 
-            var direction = _options.Direction.ToLower();
+            var direction = options.Direction.ToLower();
             var directionText = direction == "upload" ? "Local → Remote" : "Remote → Local";
             
             Console.WriteLine($"Starting sync: {directionText}");
-            Console.WriteLine($"Local Path: {_options.LocalPath}");
-            Console.WriteLine($"Storage Zone: {_options.StorageZone}");
-            Console.WriteLine($"Region: {_options.Region}");
-            if (!string.IsNullOrWhiteSpace(_options.RemotePath))
+            Console.WriteLine($"Local Path: {options.LocalPath}");
+            Console.WriteLine($"Storage Zone: {options.StorageZone}");
+            Console.WriteLine($"Region: {options.Region}");
+            if (!string.IsNullOrWhiteSpace(options.RemotePath))
             {
-                Console.WriteLine($"Remote Path: /{_options.RemotePath.Trim('/')}");
+                Console.WriteLine($"Remote Path: /{options.RemotePath.Trim('/')}");
             }
             
-            if (_options.DryRun)
+            if (options.DryRun)
             {
                 Console.WriteLine("DRY RUN MODE - No changes will be made");
             }
@@ -54,7 +43,7 @@ namespace BunnyTransfer.NET
             {
                 await SyncFromRemoteToLocalAsync();
             }
-            else // upload
+            else
             {
                 await SyncFromLocalToRemoteAsync();
             }
@@ -65,30 +54,25 @@ namespace BunnyTransfer.NET
 
         private async Task SyncFromLocalToRemoteAsync()
         {
-            var localPath = Path.GetFullPath(_options.LocalPath);
-            var storageZoneName = _options.StorageZone;
+            var localPath = Path.GetFullPath(options.LocalPath);
+            var storageZoneName = options.StorageZone;
 
             if (!Directory.Exists(localPath))
             {
                 throw new DirectoryNotFoundException($"Local directory not found: {localPath}");
             }
-
-            // Get all local files
+            
             var localFiles = GetLocalFiles(localPath);
             Console.WriteLine($"Found {localFiles.Count} local file(s)");
-
-            // Build remote path with optional subdirectory
-            var remoteBasePath = string.IsNullOrWhiteSpace(_options.RemotePath) 
+            
+            var remoteBasePath = string.IsNullOrWhiteSpace(options.RemotePath) 
                 ? $"{storageZoneName}/" 
-                : $"{storageZoneName}/{_options.RemotePath.Trim('/')}/";
-
-            // Get all remote files
+                : $"{storageZoneName}/{options.RemotePath.Trim('/')}/";
+            
             var remoteFiles = await GetRemoteFilesRecursiveAsync(remoteBasePath);
             Console.WriteLine($"Found {remoteFiles.Count} remote file(s)");
-
-            // Build file maps
+            
             var localFileMap = BuildLocalFileMap(localFiles, localPath, remoteBasePath.TrimEnd('/'));
-            // FullPath starts with "/" so we need to match it in local map keys
             var remoteFileMap = remoteFiles.ToDictionary(f => f.FullPath.TrimStart('/'), f => f);
 
             // Separate files for processing order: 
@@ -102,7 +86,7 @@ namespace BunnyTransfer.NET
             foreach (var localFile in localFileMap.Keys)
             {
                 var fileName = Path.GetFileName(localFileMap[localFile]);
-                var isCustomLast = _options.UploadLastPatterns.Any(pattern => 
+                var isCustomLast = options.UploadLastPatterns.Any(pattern => 
                     fileName.Equals(pattern, StringComparison.OrdinalIgnoreCase) ||
                     localFile.EndsWith("/" + pattern, StringComparison.OrdinalIgnoreCase));
 
@@ -121,40 +105,33 @@ namespace BunnyTransfer.NET
                     otherFiles.Add(localFile);
                 }
             }
-
-            // Upload non-HTML files first
+            
             int uploaded = 0;
             int skipped = 0;
 
             Console.WriteLine();
-            Console.WriteLine($"Syncing files (parallel: {_options.ParallelUploads})...");
+            Console.WriteLine($"Syncing files (parallel: {options.ParallelUploads})...");
             Console.WriteLine();
-
-            // Calculate number of files to potentially upload
-            // Total bytes will be calculated dynamically as we determine which files need uploading
+            
             var filesToUpload = otherFiles.Count + htmlFiles.Count + customLastFiles.Count;
 
             using (var progress = new ProgressDisplay())
             {
-                progress.SetTotalFiles(filesToUpload, 0); // Start with 0 bytes, will add as we go
-
-                // Upload other files in parallel
+                progress.SetTotalFiles(filesToUpload, 0);
+                
                 var (uploadedOther, skippedOther) = await UploadFilesParallelAsync(otherFiles, localFileMap, remoteFileMap, "", progress);
                 uploaded += uploadedOther;
                 skipped += skippedOther;
-
-                // Upload HTML/XML files
+                
                 var (uploadedHtml, skippedHtml) = await UploadFilesParallelAsync(htmlFiles, localFileMap, remoteFileMap, "HTML/XML", progress);
                 uploaded += uploadedHtml;
                 skipped += skippedHtml;
-
-                // Upload custom pattern files last (e.g., hash files, manifests)
+                
                 var (uploadedCustom, skippedCustom) = await UploadFilesParallelAsync(customLastFiles, localFileMap, remoteFileMap, "LAST", progress);
                 uploaded += uploadedCustom;
                 skipped += skippedCustom;
             }
-
-            // Delete remote files that don't exist locally
+            
             var filesToDelete = remoteFileMap.Keys.Except(localFileMap.Keys).ToList();
             
             Console.WriteLine();
@@ -164,7 +141,7 @@ namespace BunnyTransfer.NET
             {
                 Console.WriteLine($"[DELETE] {fileToDelete}");
 
-                if (!_options.DryRun)
+                if (!options.DryRun)
                 {
                     await _storage!.DeleteObjectAsync(fileToDelete);
                 }
@@ -176,44 +153,40 @@ namespace BunnyTransfer.NET
 
         private async Task SyncFromRemoteToLocalAsync()
         {
-            var storageZoneName = _options.StorageZone;
-            var localPath = Path.GetFullPath(_options.LocalPath);
+            var storageZoneName = options.StorageZone;
+            var localPath = Path.GetFullPath(options.LocalPath);
 
             if (!Directory.Exists(localPath))
             {
                 Directory.CreateDirectory(localPath);
             }
-
-            // Build remote path with optional subdirectory
-            var remoteBasePath = string.IsNullOrWhiteSpace(_options.RemotePath) 
+            
+            var remoteBasePath = string.IsNullOrWhiteSpace(options.RemotePath) 
                 ? $"{storageZoneName}/" 
-                : $"{storageZoneName}/{_options.RemotePath.Trim('/')}/";
-
-            // Get all remote files
+                : $"{storageZoneName}/{options.RemotePath.Trim('/')}/";
+            
             var remoteFiles = await GetRemoteFilesRecursiveAsync(remoteBasePath);
             Console.WriteLine($"Found {remoteFiles.Count} remote file(s)");
-
-            // Get all local files
+            
             var localFiles = GetLocalFiles(localPath);
             Console.WriteLine($"Found {localFiles.Count} local file(s)");
 
-            var localFileMap = BuildLocalFileMap(localFiles, localPath, remoteBasePath.TrimEnd('/'));
+            BuildLocalFileMap(localFiles, localPath, remoteBasePath.TrimEnd('/'));
 
-            int downloaded = 0;
-            int skipped = 0;
+            int downloaded;
+            int skipped;
 
             Console.WriteLine();
-            Console.WriteLine($"Syncing files (parallel: {_options.ParallelUploads})...");
+            Console.WriteLine($"Syncing files (parallel: {options.ParallelUploads})...");
             Console.WriteLine();
-
-            // Prepare file list with metadata
+            
             var filesToProcess = remoteFiles
                 .Where(f => !f.IsDirectory)
                 .Select(f =>
                 {
                     var remoteBaseLength = remoteBasePath.TrimEnd('/').Length;
                     var relativePath = f.FullPath.Length > remoteBaseLength 
-                        ? f.FullPath.Substring(remoteBaseLength + 1).TrimStart('/')
+                        ? f.FullPath[(remoteBaseLength + 1)..].TrimStart('/')
                         : f.ObjectName;
                     return (remoteFile: f, relativePath);
                 })
@@ -221,10 +194,9 @@ namespace BunnyTransfer.NET
 
             using (var progress = new ProgressDisplay())
             {
-                progress.SetTotalFiles(filesToProcess.Count, 0); // Start with 0 bytes, will add as we go
-
-                // Download files in parallel
-                var semaphore = new SemaphoreSlim(_options.ParallelUploads, _options.ParallelUploads);
+                progress.SetTotalFiles(filesToProcess.Count, 0);
+                
+                var semaphore = new SemaphoreSlim(options.ParallelUploads, options.ParallelUploads);
                 var tasks = new List<Task<(bool downloaded, bool skipped)>>();
 
                 foreach (var (remoteFile, relativePath) in filesToProcess)
@@ -236,19 +208,16 @@ namespace BunnyTransfer.NET
                         try
                         {
                             var localFilePath = Path.Combine(localPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
-                            var needsDownload = true;
 
                             if (File.Exists(localFilePath))
                             {
-                                // Use checksum from API if available
                                 if (!string.IsNullOrEmpty(remoteFile.Checksum))
                                 {
                                     var localHash = CalculateFileHash(localFilePath);
 
                                     if (localHash.Equals(remoteFile.Checksum, StringComparison.OrdinalIgnoreCase))
                                     {
-                                        needsDownload = false;
-                                        if (_options.Verbose)
+                                        if (options.Verbose)
                                         {
                                             Console.WriteLine($"[SKIP] {relativePath} (unchanged)");
                                         }
@@ -257,12 +226,10 @@ namespace BunnyTransfer.NET
                                 }
                                 else
                                 {
-                                    // Fallback: compare file sizes if checksum not available
                                     var localFileInfo = new FileInfo(localFilePath);
                                     if (localFileInfo.Length == remoteFile.Length)
                                     {
-                                        needsDownload = false;
-                                        if (_options.Verbose)
+                                        if (options.Verbose)
                                         {
                                             Console.WriteLine($"[SKIP] {relativePath} (same size, no checksum)");
                                         }
@@ -270,44 +237,35 @@ namespace BunnyTransfer.NET
                                     }
                                 }
                             }
+                            
+                            progress.AddToTotal(remoteFile.Length);
 
-                            if (needsDownload)
+                            if (!options.DryRun)
                             {
-                                // Add file size to total bytes for progress calculation
-                                progress.AddToTotal(remoteFile.Length);
-
-                                if (!_options.DryRun)
+                                var directory = Path.GetDirectoryName(localFilePath);
+                                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                                 {
-                                    var directory = Path.GetDirectoryName(localFilePath);
-                                    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                                    {
-                                        Directory.CreateDirectory(directory);
-                                    }
-
-                                    // Start tracking this file in progress display
-                                    progress.StartFile(relativePath, remoteFile.Length);
-
-                                    // Download with progress callback
-                                    await _storage!.DownloadObjectAsync(remoteFile.FullPath, localFilePath, (bytesDownloaded) =>
-                                    {
-                                        progress.UpdateFileProgress(relativePath, bytesDownloaded);
-                                    });
-
-                                    // Mark file as complete
-                                    progress.CompleteFile(relativePath);
+                                    Directory.CreateDirectory(directory);
                                 }
-                                else
+                                
+                                progress.StartFile(relativePath, remoteFile.Length);
+                                
+                                await _storage!.DownloadObjectAsync(remoteFile.FullPath, localFilePath, (bytesDownloaded) =>
                                 {
-                                    if (_options.Verbose)
-                                    {
-                                        Console.WriteLine($"[DRY-RUN DOWNLOAD] {relativePath}");
-                                    }
+                                    progress.UpdateFileProgress(relativePath, bytesDownloaded);
+                                });
+                                
+                                progress.CompleteFile(relativePath);
+                            }
+                            else
+                            {
+                                if (options.Verbose)
+                                {
+                                    Console.WriteLine($"[DRY-RUN DOWNLOAD] {relativePath}");
                                 }
-
-                                return (true, false);
                             }
 
-                            return (false, false);
+                            return (true, false);
                         }
                         finally
                         {
@@ -322,8 +280,7 @@ namespace BunnyTransfer.NET
                 downloaded = results.Count(r => r.downloaded);
                 skipped = results.Count(r => r.skipped);
             }
-
-            // Delete local files that don't exist remotely
+            
             var remoteFilePaths = remoteFiles
                 .Where(f => !f.IsDirectory)
                 .Select(f => f.FullPath.TrimStart('/'))
@@ -350,7 +307,7 @@ namespace BunnyTransfer.NET
                 var relativePath = Path.GetRelativePath(localPath, fileToDelete);
                 Console.WriteLine($"[DELETE] {relativePath}");
 
-                if (!_options.DryRun)
+                if (!options.DryRun)
                 {
                     File.Delete(fileToDelete);
                 }
@@ -369,7 +326,6 @@ namespace BunnyTransfer.NET
             {
                 if (obj.IsDirectory)
                 {
-                    // Use FullPath which already includes storage zone name, just add trailing slash for directories
                     var subDirectoryPath = obj.FullPath + "/";
                     var subObjects = await GetRemoteFilesRecursiveAsync(subDirectoryPath);
                     result.AddRange(subObjects);
@@ -404,12 +360,10 @@ namespace BunnyTransfer.NET
 
         private string CalculateFileHash(string filePath)
         {
-            using (var stream = File.OpenRead(filePath))
-            using (var sha256 = SHA256.Create())
-            {
-                var hash = sha256.ComputeHash(stream);
-                return BitConverter.ToString(hash).Replace("-", "");
-            }
+            using var stream = File.OpenRead(filePath);
+            using var sha256 = SHA256.Create();
+            var hash = sha256.ComputeHash(stream);
+            return Convert.ToHexString(hash);
         }
 
         private async Task<(int uploaded, int skipped)> UploadFilesParallelAsync(
@@ -422,9 +376,7 @@ namespace BunnyTransfer.NET
             if (remoteFilePaths.Count == 0)
                 return (0, 0);
 
-            var uploadedCount = 0;
-            var skippedCount = 0;
-            var semaphore = new SemaphoreSlim(_options.ParallelUploads, _options.ParallelUploads);
+            var semaphore = new SemaphoreSlim(options.ParallelUploads, options.ParallelUploads);
             var tasks = new List<Task<(bool uploaded, bool skipped)>>();
 
             foreach (var remoteFilePath in remoteFilePaths)
@@ -437,21 +389,16 @@ namespace BunnyTransfer.NET
                     {
                         var localFilePath = localFileMap[remoteFilePath];
                         var fileInfo = new FileInfo(localFilePath);
-                        var needsUpload = true;
 
-                        if (remoteFileMap.ContainsKey(remoteFilePath))
+                        if (remoteFileMap.TryGetValue(remoteFilePath, out var remoteObject))
                         {
-                            var remoteObject = remoteFileMap[remoteFilePath];
-                            
-                            // Use checksum from API if available, otherwise compare by downloading
                             if (!string.IsNullOrEmpty(remoteObject.Checksum))
                             {
                                 var localHash = CalculateFileHash(localFilePath);
                                 
                                 if (localHash.Equals(remoteObject.Checksum, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    needsUpload = false;
-                                    if (_options.Verbose)
+                                    if (options.Verbose)
                                     {
                                         Console.WriteLine($"[SKIP] {remoteFilePath} (unchanged)");
                                     }
@@ -460,36 +407,28 @@ namespace BunnyTransfer.NET
                             }
                             else if (remoteObject.Length == fileInfo.Length)
                             {
-                                // Fallback: if checksum not available, compare file sizes
-                                needsUpload = false;
-                                if (_options.Verbose)
+                                if (options.Verbose)
                                 {
                                     Console.WriteLine($"[SKIP] {remoteFilePath} (same size, no checksum)");
                                 }
                                 return (false, true);
                             }
                         }
+                        
+                        progress?.AddToTotal(fileInfo.Length);
+                        progress?.StartFile(remoteFilePath, fileInfo.Length);
 
-                        if (needsUpload)
+                        if (!options.DryRun)
                         {
-                            // Add file size to total when we decide to upload it
-                            progress?.AddToTotal(fileInfo.Length);
-                            progress?.StartFile(remoteFilePath, fileInfo.Length);
-
-                            if (!_options.DryRun)
-                            {
-                                await _storage!.UploadWithProgressAsync(
-                                    localFilePath, 
-                                    remoteFilePath, 
-                                    true,
-                                    bytesUploaded => progress?.UpdateFileProgress(remoteFilePath, bytesUploaded));
-                            }
-
-                            progress?.CompleteFile(remoteFilePath);
-                            return (true, false);
+                            await _storage!.UploadWithProgressAsync(
+                                localFilePath, 
+                                remoteFilePath, 
+                                true,
+                                bytesUploaded => progress?.UpdateFileProgress(remoteFilePath, bytesUploaded));
                         }
 
-                        return (false, false);
+                        progress?.CompleteFile(remoteFilePath);
+                        return (true, false);
                     }
                     finally
                     {
@@ -501,8 +440,8 @@ namespace BunnyTransfer.NET
             }
 
             var results = await Task.WhenAll(tasks);
-            uploadedCount = results.Count(r => r.uploaded);
-            skippedCount = results.Count(r => r.skipped);
+            var uploadedCount = results.Count(r => r.uploaded);
+            var skippedCount = results.Count(r => r.skipped);
 
             return (uploadedCount, skippedCount);
         }

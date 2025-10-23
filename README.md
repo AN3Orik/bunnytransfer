@@ -78,7 +78,21 @@ set BUNNY_ACCESS_KEY=your_access_key
 
 ## Building from Source
 
-See [BUILD.md](BunnyTransfer.NET/BUILD.md) for build instructions.
+```bash
+# Windows
+build_win.bat
+
+# Linux
+./build_linux.sh
+
+# macOS
+./build_macos.sh
+
+# Universal (auto-detect platform)
+./build.sh
+```
+
+Output: `BunnyTransfer.NET/bin/Release/net9.0/<platform>/publish/bunnytransfer`
 
 ## Creating a Release
 
@@ -95,4 +109,4 @@ MIT License
 
 ## Author
 
-ANZO (2025)
+ANZO © 2025

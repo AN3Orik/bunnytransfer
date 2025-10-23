@@ -30,18 +30,18 @@ echo ""
 
 # Clean previous build
 echo "Cleaning previous build..."
-rm -rf bin/Release/net9.0/$PLATFORM
+rm -rf BunnyTransfer.NET/bin/Release/net9.0/$PLATFORM
 
 # Restore dependencies
 echo "Restoring dependencies..."
-dotnet restore
+dotnet restore BunnyTransfer.NET/BunnyTransfer.NET.csproj
 
 # Build and publish Native AOT
 echo "Building Native AOT binary..."
-dotnet publish -c Release -r $PLATFORM --self-contained
+dotnet publish BunnyTransfer.NET/BunnyTransfer.NET.csproj -c Release -r $PLATFORM --self-contained
 
 echo ""
 echo "Build completed!"
-echo "Output: bin/Release/net9.0/$PLATFORM/publish/"
+echo "Output: BunnyTransfer.NET/bin/Release/net9.0/$PLATFORM/publish/"
 echo ""
-ls -lh bin/Release/net9.0/$PLATFORM/publish/bunnytransfer
+ls -lh BunnyTransfer.NET/bin/Release/net9.0/$PLATFORM/publish/bunnytransfer

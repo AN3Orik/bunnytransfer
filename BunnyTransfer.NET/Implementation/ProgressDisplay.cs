@@ -1,11 +1,7 @@
-using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Threading;
 
-namespace BunnyTransfer.NET
+namespace BunnyTransfer.NET.Implementation
 {
     /// <summary>
     /// Handles progress display for file uploads/downloads with live updates
@@ -13,7 +9,7 @@ namespace BunnyTransfer.NET
     public class ProgressDisplay : IDisposable
     {
         private readonly ConcurrentDictionary<string, FileProgress> _activeFiles = new();
-        private readonly object _consoleLock = new();
+        private readonly Lock _consoleLock = new();
         private readonly Timer _updateTimer;
         private readonly int _maxDisplayFiles;
         private int _totalFiles;
@@ -23,7 +19,7 @@ namespace BunnyTransfer.NET
         private readonly Stopwatch _overallTimer = new();
         private int _lastLineCount = 0;
 
-        public class FileProgress
+        private class FileProgress
         {
             public string FileName { get; set; } = string.Empty;
             public long TotalSize { get; set; }
@@ -76,7 +72,7 @@ namespace BunnyTransfer.NET
             {
                 progress.IsCompleted = true;
                 progress.CompletedTime = DateTime.Now;
-                progress.TransferredSize = progress.TotalSize; // Ensure 100%
+                progress.TransferredSize = progress.TotalSize;
                 Interlocked.Increment(ref _completedFiles);
                 Interlocked.Add(ref _completedBytes, progress.TotalSize);
             }
@@ -88,12 +84,10 @@ namespace BunnyTransfer.NET
             {
                 try
                 {
-                    // Remove files that have been completed for more than 2 seconds
                     var now = DateTime.Now;
                     var filesToRemove = _activeFiles
-                        .Where(kvp => kvp.Value.IsCompleted && 
-                                     kvp.Value.CompletedTime.HasValue && 
-                                     (now - kvp.Value.CompletedTime.Value).TotalSeconds > 2)
+                        .Where(kvp => kvp.Value is { IsCompleted: true, CompletedTime: not null } && 
+                                      (now - kvp.Value.CompletedTime.Value).TotalSeconds > 2)
                         .Select(kvp => kvp.Key)
                         .ToList();
                     
@@ -101,8 +95,6 @@ namespace BunnyTransfer.NET
                     {
                         _activeFiles.TryRemove(fileName, out _);
                     }
-
-                    // Clear previous lines
                     if (_lastLineCount > 0)
                     {
                         Console.SetCursorPosition(0, Math.Max(0, Console.CursorTop - _lastLineCount));
@@ -115,15 +107,13 @@ namespace BunnyTransfer.NET
                     }
 
                     var lines = 0;
-
-                    // Calculate current transferred bytes including in-progress files
+                    
                     var currentTransferred = _completedBytes;
                     foreach (var file in _activeFiles.Values.Where(f => !f.IsCompleted))
                     {
                         currentTransferred += file.TransferredSize;
                     }
-
-                    // Overall progress based on bytes, not file count
+                    
                     var overallPercent = _totalBytes > 0 ? (currentTransferred * 100.0 / _totalBytes) : 0;
                     var overallSpeed = _overallTimer.ElapsedMilliseconds > 0 
                         ? (currentTransferred / 1024.0 / 1024.0) / (_overallTimer.ElapsedMilliseconds / 1000.0)
@@ -134,8 +124,7 @@ namespace BunnyTransfer.NET
                                 $"{overallSpeed:F2} MB/s | {FormatTime(_overallTimer.Elapsed)}";
                     Console.WriteLine(header);
                     lines++;
-
-                    // Progress bar
+                    
                     var barWidth = Math.Min(50, Console.BufferWidth - 10);
                     var filled = (int)(barWidth * overallPercent / 100.0);
                     var progressBar = $"[{new string('█', filled)}{new string('░', barWidth - filled)}]";
@@ -144,10 +133,9 @@ namespace BunnyTransfer.NET
 
                     Console.WriteLine();
                     lines++;
-
-                    // Active files (show both in-progress and recently completed)
+                    
                     var activeFiles = _activeFiles.Values
-                        .OrderByDescending(f => f.IsCompleted) // Completed files first
+                        .OrderByDescending(f => f.IsCompleted)
                         .ThenByDescending(f => f.TransferredSize)
                         .Take(_maxDisplayFiles)
                         .ToList();
@@ -167,7 +155,7 @@ namespace BunnyTransfer.NET
                             var fileBarWidth = 20;
                             var fileFilled = (int)(fileBarWidth * percent / 100.0);
                             var fileBar = file.IsCompleted 
-                                ? $"[{new string('█', fileBarWidth)}]" // Fully filled for completed
+                                ? $"[{new string('█', fileBarWidth)}]"
                                 : $"[{new string('█', fileFilled)}{new string('░', fileBarWidth - fileFilled)}]";
 
                             var fileName = file.FileName.Length > 40 
@@ -177,7 +165,6 @@ namespace BunnyTransfer.NET
                             var status = file.IsCompleted ? "✓" : " ";
                             var line = $"  {status}{fileBar} {percent,5:F1}% {fileName,-40} {FormatBytes(file.TransferredSize),10}/{FormatBytes(file.TotalSize),-10} {speed,7:F2} MB/s";
                             
-                            // Truncate line if too long
                             if (line.Length > Console.BufferWidth - 1)
                             {
                                 line = line.Substring(0, Console.BufferWidth - 1);
@@ -187,8 +174,7 @@ namespace BunnyTransfer.NET
                             lines++;
                         }
                     }
-
-                    // Show how many more files are being processed
+                    
                     var remainingActive = _activeFiles.Values.Count(f => !f.IsCompleted) - activeFiles.Count(f => !f.IsCompleted);
                     if (remainingActive > 0)
                     {
@@ -200,7 +186,7 @@ namespace BunnyTransfer.NET
                 }
                 catch
                 {
-                    // Ignore console errors during resize or other issues
+                    // ignored
                 }
             }
         }
@@ -222,7 +208,7 @@ namespace BunnyTransfer.NET
             return $"{time.Seconds}s";
         }
 
-        public void Dispose()
+		public void Dispose()
         {
             _updateTimer?.Dispose();
             
